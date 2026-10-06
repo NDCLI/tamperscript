@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CVAT - khóa zoom, Switch label nhanh và Edit mask
 // @namespace    cvat-internal-shortcuts
-// @version      1.6.1
+// @version      1.6.2
 // @description  Khóa zoom, đổi nhãn nhanh, nhấp đúp Edit mask và Ctrl+lăn chỉnh brush
 // @match        http://10.43.2.147:8080/*
 // @match        http://10.43.2.12:8080/*
@@ -67,9 +67,9 @@
     }
   }, true);
 
-  // Ctrl + lăn lên tăng 20; Ctrl + lăn xuống giảm 10.
-  const BRUSH_WHEEL_INCREASE = 20;
-  const BRUSH_WHEEL_DECREASE = 10;
+  // Ctrl + lăn lên tăng 10; Ctrl + lăn xuống giảm 15.
+  const BRUSH_WHEEL_INCREASE = 10;
+  const BRUSH_WHEEL_DECREASE = 15;
 
   // Ctrl + lăn chuột: chỉnh brush khi toolbox mở, đồng thời chặn zoom.
   window.addEventListener('wheel', (event) => {
