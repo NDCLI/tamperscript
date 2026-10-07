@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         CVAT - khóa zoom, Switch label nhanh và Edit mask
 // @namespace    cvat-internal-shortcuts
-// @version      1.6.3
-// @description  Khóa zoom, đổi nhãn nhanh, nhấp đúp Edit mask và Ctrl+lăn chỉnh brush
+// @version      1.6.4
+// @description  Khóa zoom, đổi nhãn nhanh, nhấp đúp Edit mask và Ctrl/Shift+lăn chỉnh brush
 // @match        http://10.43.2.147:8080/*
 // @match        http://10.43.2.12:8080/*
 // @run-at       document-start
@@ -67,19 +67,21 @@
     }
   }, true);
 
-  // Ctrl + lăn lên tăng 2; Ctrl + lăn xuống giảm 5.
+  // Ctrl hoặc Shift + lăn lên tăng 2; lăn xuống giảm 5.
   const BRUSH_WHEEL_INCREASE = 2;
   const BRUSH_WHEEL_DECREASE = 5;
 
-  // Ctrl + lăn chuột: chỉnh brush khi toolbox mở, đồng thời chặn zoom.
+  // Ctrl/Shift + lăn: chỉnh brush khi toolbox mở; Ctrl luôn chặn zoom.
   window.addEventListener('wheel', (event) => {
-    if (!event.ctrlKey) return;
+    if (!event.ctrlKey && !event.shiftKey) return;
 
-    event.preventDefault();
-    event.stopImmediatePropagation();
+    if (event.ctrlKey) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
 
     if (
-      event.altKey || event.metaKey || event.shiftKey ||
+      event.altKey || event.metaKey ||
       event.deltaY === 0 ||
       !(event.target instanceof Element) ||
       !event.target.closest('#cvat_canvas_wrapper, .cvat-brush-tools-toolbox')
@@ -95,6 +97,12 @@
       !(input instanceof HTMLInputElement) ||
       !isVisible(input) || input.disabled || input.readOnly
     ) return;
+
+    // Shift chỉ chặn cuộn khi đang có ô chỉnh brush dùng được.
+    if (!event.ctrlKey) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
 
     const current = Number(input.value);
     if (!input.value.trim() || !Number.isFinite(current)) return;
