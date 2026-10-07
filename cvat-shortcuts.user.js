@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CVAT - khóa zoom, Switch label nhanh và Edit mask
 // @namespace    cvat-internal-shortcuts
-// @version      1.6.2
+// @version      1.6.3
 // @description  Khóa zoom, đổi nhãn nhanh, nhấp đúp Edit mask và Ctrl+lăn chỉnh brush
 // @match        http://10.43.2.147:8080/*
 // @match        http://10.43.2.12:8080/*
@@ -67,9 +67,9 @@
     }
   }, true);
 
-  // Ctrl + lăn lên tăng 10; Ctrl + lăn xuống giảm 15.
-  const BRUSH_WHEEL_INCREASE = 10;
-  const BRUSH_WHEEL_DECREASE = 15;
+  // Ctrl + lăn lên tăng 2; Ctrl + lăn xuống giảm 5.
+  const BRUSH_WHEEL_INCREASE = 2;
+  const BRUSH_WHEEL_DECREASE = 5;
 
   // Ctrl + lăn chuột: chỉnh brush khi toolbox mở, đồng thời chặn zoom.
   window.addEventListener('wheel', (event) => {
@@ -338,6 +338,10 @@
 
   // Phím thường -> shortcut Ctrl+số mặc định.
   const plainKeys = {
+    'y': '1', // person
+    's': '2', // car
+    'u': '3', // bus
+    'o': '4', // truck
     '0': '0', // Cùng shortcut Ctrl+0; vẫn giữ Shift+S cho _skip
     '1': '1', // person
     '2': '2', // car
@@ -355,7 +359,7 @@
     '2': '4', // bicycle
   };
 
-  window.addEventListener('keydown', (event) => {
+  function handleLabelShortcut(event) {
     if (event.isComposing) return;
 
     const isLicenseplateShortcut =
@@ -379,7 +383,7 @@
       event.preventDefault();
       event.stopImmediatePropagation();
 
-      if (!event.repeat) {
+      if (event.type === 'keydown' && !event.repeat) {
         void switchActiveObjectToLicenseplate();
       }
 
@@ -395,7 +399,9 @@
     // Chỉ đổi phím trong màn hình annotation có Object sidebar.
     if (!document.querySelector('.cvat-objects-sidebar')) return;
 
-    const key = event.key.toLowerCase();
+    // Dùng vị trí phím để Caps Lock/bố cục bàn phím không đổi mapping.
+    const physicalKey = /^(?:Key([A-Z])|Digit([0-9]))$/.exec(event.code);
+    const key = (physicalKey ? physicalKey[1] || physicalKey[2] : event.key).toLowerCase();
     let labelNumber = null;
 
     if (event.altKey && !event.shiftKey) {
@@ -403,10 +409,13 @@
     } else if (event.shiftKey && !event.altKey && key === 's') {
       labelNumber = '0'; // _skip
     } else if (!event.altKey && !event.shiftKey) {
-      labelNumber = plainKeys[event.key] || null;
+      labelNumber = plainKeys[key] || null;
     }
 
     if (!labelNumber) return;
+
+    // Chặn keypress chữ gốc; vẫn cho CVAT nhận Ctrl+số qua propagation.
+    if (event.type === 'keydown') event.preventDefault();
 
     // Giữ cách chuyển phím đang dùng cho 10 nhãn đầu.
     const keyCode = 48 + Number(labelNumber);
@@ -433,5 +442,9 @@
         console.warn('[CVAT] Không đổi được thuộc tính phím:', name);
       }
     }
-  }, true);
+  }
+
+  for (const type of ['keydown', 'keypress', 'keyup']) {
+    window.addEventListener(type, handleLabelShortcut, true);
+  }
 })();
