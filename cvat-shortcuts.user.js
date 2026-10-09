@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CVAT - khóa zoom, Switch label nhanh và Edit mask
 // @namespace    cvat-internal-shortcuts
-// @version      1.6.4
+// @version      1.6.5
 // @description  Khóa zoom, đổi nhãn nhanh, nhấp đúp Edit mask và Ctrl/Shift+lăn chỉnh brush
 // @match        http://10.43.2.147:8080/*
 // @match        http://10.43.2.12:8080/*
@@ -367,8 +367,87 @@
     '2': '4', // bicycle
   };
 
+  let switchingBrushForm = false;
+
+  function findBrushFormSelector() {
+    const toolbox = [...document.querySelectorAll('.cvat-brush-tools-toolbox')]
+      .find(isVisible);
+    if (!toolbox) return null;
+
+    return [...toolbox.querySelectorAll('.ant-select')].find((selector) => {
+      const selected = selector.querySelector('.ant-select-selection-item');
+      const name = (selected?.textContent || '').trim().toLowerCase();
+      return isVisible(selector) &&
+        !selector.classList.contains('ant-select-disabled') &&
+        (name === 'circle' || name === 'square');
+    }) || null;
+  }
+
+  async function toggleBrushForm(selector) {
+    if (switchingBrushForm) return;
+    const input = selector.querySelector('input');
+    const selected = selector.querySelector('.ant-select-selection-item');
+    const current = (selected?.textContent || '').trim().toLowerCase();
+    if (!input || input.disabled || !['circle', 'square'].includes(current)) return;
+
+    const next = current === 'circle' ? 'square' : 'circle';
+    const previousFocus = document.activeElement;
+    switchingBrushForm = true;
+
+    try {
+      if (!selector.classList.contains('ant-select-open')) {
+        (selector.querySelector('.ant-select-selector') || input)
+          .dispatchEvent(new MouseEvent('mousedown', {
+            bubbles: true, cancelable: true, button: 0, view: window,
+          }));
+      }
+
+      for (let attempt = 0; attempt < 20; attempt++) {
+        await wait(25);
+        if (!selector.isConnected || !isVisible(selector)) return;
+        const dropdown = findDropdown(input);
+        const option = dropdown && [...dropdown.querySelectorAll('.ant-select-item-option')]
+          .find((item) => {
+            const name = (item.getAttribute('title') || item.textContent || '')
+              .trim().toLowerCase();
+            return name === next && isVisible(item) &&
+              !item.classList.contains('ant-select-item-option-disabled');
+          });
+        if (!option) continue;
+        option.click();
+        return;
+      }
+      console.warn('[CVAT] Không tìm thấy lựa chọn Circle/Square.');
+    } catch (error) {
+      console.error('[CVAT] Lỗi chuyển Circle/Square:', error);
+    } finally {
+      // Không gửi Escape vì phím đó có thể hủy phiên Edit mask.
+      if (input.isConnected) input.blur();
+      if (previousFocus?.isConnected && previousFocus !== document.body) {
+        previousFocus.focus({ preventScroll: true });
+      }
+      switchingBrushForm = false;
+    }
+  }
+
   function handleLabelShortcut(event) {
     if (event.isComposing) return;
+
+    if (event.code === 'KeyQ' && event.altKey &&
+      !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+      const selector = findBrushFormSelector();
+      if (!selector) return;
+      const inBrushSize = event.target instanceof Element &&
+        event.target.closest('.cvat-brush-tools-brush-size');
+      if (isEditing(event.target) && !selector.contains(event.target) && !inBrushSize) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (event.type === 'keydown' && !event.repeat) {
+        void toggleBrushForm(selector);
+      }
+      return;
+    }
 
     const isLicenseplateShortcut =
       event.code === 'Backquote' &&
