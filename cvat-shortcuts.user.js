@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         CVAT - khóa zoom, Switch label nhanh và Edit mask
 // @namespace    cvat-internal-shortcuts
-// @version      1.6.6
-// @description  Khóa zoom, đổi nhãn nhanh, nhấp đúp Edit mask và Ctrl/Shift+lăn chỉnh brush
+// @version      1.6.8
+// @description  Khóa zoom, đổi nhãn, Edit mask, chỉnh brush; chặn chọn chữ/menu ngoài ô nhập, giữ Alt để copy
 // @match        http://10.43.2.147:8080/*
 // @match        http://10.43.2.12:8080/*
+// @match        https://app.cvat.ai/*
 // @run-at       document-start
 // @grant        none
 // @updateURL    https://raw.githubusercontent.com/NDCLI/tamperscript/main/cvat-shortcuts.user.js
@@ -14,10 +15,11 @@
 (() => {
   'use strict';
 
-  // Giới hạn chính xác hai địa chỉ, gồm cả cổng.
+  // Chỉ chạy trên hai server nội bộ và CVAT Online.
   if (![
     'http://10.43.2.147:8080',
     'http://10.43.2.12:8080',
+    'https://app.cvat.ai',
   ].includes(location.origin)) return;
 
   const wait = (ms) =>
@@ -31,6 +33,54 @@
       Boolean(target.closest('input, textarea, select, [role="textbox"]'))
     );
   }
+
+  // Chặn chọn chữ vô tình trên CVAT; giữ Alt để chọn chữ và mở menu copy.
+  const COPY_MODE_CLASS = 'cvat-shortcuts-copy-mode';
+  function setCopyMode(enabled) {
+    document.documentElement?.classList.toggle(COPY_MODE_CLASS, enabled);
+  }
+
+  function installSelectionGuard() {
+    const style = document.createElement('style');
+    style.textContent = `
+      html:not(.${COPY_MODE_CLASS}), html:not(.${COPY_MODE_CLASS}) * {
+        -webkit-user-select: none !important;
+        user-select: none !important;
+      }
+      html:not(.${COPY_MODE_CLASS}) :is(input, textarea, select, [role="textbox"], [contenteditable]:not([contenteditable="false"])),
+      html:not(.${COPY_MODE_CLASS}) :is([role="textbox"], [contenteditable]:not([contenteditable="false"])) *,
+      html.${COPY_MODE_CLASS}, html.${COPY_MODE_CLASS} * {
+        -webkit-user-select: text !important;
+        user-select: text !important;
+      }
+    `;
+    document.documentElement.appendChild(style);
+  }
+  if (document.documentElement) installSelectionGuard();
+  else document.addEventListener('DOMContentLoaded', installSelectionGuard, { once: true });
+
+  window.addEventListener('keydown', (event) => {
+    setCopyMode(event.altKey || event.key === 'Alt');
+    // Giữ Ctrl+A trong ô nhập; ngoài ô nhập không chọn toàn bộ chữ trên trang.
+    if ((event.ctrlKey || event.metaKey) && !event.altKey &&
+      (event.code === 'KeyA' || event.key.toLowerCase() === 'a') &&
+      !isEditing(event.target)) event.preventDefault();
+  }, true);
+  window.addEventListener('keyup', (event) => {
+    setCopyMode(event.altKey && event.key !== 'Alt');
+  }, true);
+  window.addEventListener('blur', () => setCopyMode(false));
+
+  window.addEventListener('selectstart', (event) => {
+    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    if (!document.documentElement?.classList.contains(COPY_MODE_CLASS) &&
+      !isEditing(target)) event.preventDefault();
+  }, true);
+
+  window.addEventListener('contextmenu', (event) => {
+    if (!event.altKey && !isEditing(event.target)) event.preventDefault();
+    // Không chặn propagation: CVAT vẫn nhận chuột phải để thao tác annotation.
+  }, true);
 
   function isVisible(element) {
     return Boolean(
