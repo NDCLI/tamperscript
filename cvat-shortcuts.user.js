@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CVAT - khóa zoom, Switch label nhanh và Edit mask
 // @namespace    cvat-internal-shortcuts
-// @version      1.6.5
+// @version      1.6.6
 // @description  Khóa zoom, đổi nhãn nhanh, nhấp đúp Edit mask và Ctrl/Shift+lăn chỉnh brush
 // @match        http://10.43.2.147:8080/*
 // @match        http://10.43.2.12:8080/*
@@ -432,6 +432,27 @@
 
   function handleLabelShortcut(event) {
     if (event.isComposing) return;
+
+    const polygonKey = event.code === 'KeyQ' ? 'q' :
+      event.code === 'KeyR' ? 'r' : event.key.toLowerCase();
+    if (['q', 'r'].includes(polygonKey) &&
+      !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
+      const toolbox = [...document.querySelectorAll('.cvat-brush-tools-toolbox')]
+        .find(isVisible);
+      const button = toolbox?.querySelector(polygonKey === 'q' ?
+        '.cvat-brush-tools-polygon-plus' : '.cvat-brush-tools-polygon-minus');
+      const inBrushSize = event.target instanceof Element &&
+        event.target.closest('.cvat-brush-tools-brush-size');
+      if (button && isVisible(button) && (!isEditing(event.target) || inBrushSize)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (event.type === 'keydown' && !event.repeat &&
+          !button.disabled && button.getAttribute('aria-disabled') !== 'true') {
+          button.click();
+        }
+        return;
+      }
+    }
 
     if (event.code === 'KeyQ' && event.altKey &&
       !event.ctrlKey && !event.shiftKey && !event.metaKey) {
