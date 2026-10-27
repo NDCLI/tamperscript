@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CVAT - khóa zoom, Switch label nhanh và Edit mask
 // @namespace    cvat-internal-shortcuts
-// @version      1.7.1
+// @version      1.7.2
 // @description  Khóa zoom, đổi nhãn, Edit mask, chỉnh brush; chặn chọn chữ/menu ngoài ô nhập, giữ Alt để copy
 // @match        http://10.43.2.147:8080/*
 // @match        http://10.43.2.12:8080/*
@@ -424,33 +424,63 @@
     if (document.getElementById('cvat-shortcut-settings')) return;
     const overlay = document.createElement('div');
     overlay.id = 'cvat-shortcut-settings';
-    overlay.style.cssText = 'position:fixed;inset:0;background:#0009;z-index:2147483647;display:flex;align-items:center;justify-content:center;font:14px Arial;color:#222';
+    overlay.innerHTML = `<style>
+      #cvat-shortcut-settings { position:fixed; inset:0; z-index:2147483647; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(20,29,43,.48); backdrop-filter:blur(5px); font:14px 'Segoe UI',sans-serif; color:#202735; }
+      #cvat-shortcut-settings * { box-sizing:border-box; }
+      #cvat-shortcut-settings .shortcut-dialog { width:min(720px,100%); max-height:min(820px,90vh); display:flex; flex-direction:column; background:#f9fafc; border:1px solid rgba(255,255,255,.85); border-radius:16px; box-shadow:0 24px 70px rgba(14,28,50,.3); overflow:hidden; }
+      #cvat-shortcut-settings .shortcut-header { padding:24px 26px 16px; }
+      #cvat-shortcut-settings h3 { margin:0 0 7px; font-size:21px; font-weight:650; color:#172033; }
+      #cvat-shortcut-settings .shortcut-help { margin:0; color:#627084; line-height:1.5; }
+      #cvat-shortcut-settings .shortcut-table { overflow:auto; padding:0 26px 6px; }
+      #cvat-shortcut-settings .shortcut-columns, #cvat-shortcut-settings .shortcut-row { display:grid; grid-template-columns:minmax(105px,1fr) minmax(110px,1fr) minmax(135px,2fr) 44px; gap:10px; align-items:center; }
+      #cvat-shortcut-settings .shortcut-columns { padding:8px 3px; color:#718096; font-size:12px; font-weight:600; }
+      #cvat-shortcut-settings .shortcut-row { padding:7px 0; border-top:1px solid #e9edf3; }
+      #cvat-shortcut-settings input, #cvat-shortcut-settings select { width:100%; min-width:0; height:38px; padding:0 11px; border:1px solid #d5dce6; border-radius:7px; background:#fff; color:#263247; font:inherit; outline:none; transition:border-color .15s,box-shadow .15s; }
+      #cvat-shortcut-settings input:focus, #cvat-shortcut-settings select:focus { border-color:#3178d4; box-shadow:0 0 0 3px rgba(49,120,212,.14); }
+      #cvat-shortcut-settings input[readonly] { cursor:pointer; font-weight:600; color:#245a9c; }
+      #cvat-shortcut-settings button { font:600 13px 'Segoe UI',sans-serif; cursor:pointer; border:1px solid #d7dee8; border-radius:7px; background:#fff; color:#334155; padding:9px 14px; transition:background .15s, border-color .15s; }
+      #cvat-shortcut-settings button:hover { background:#f0f5fc; border-color:#b8c9df; }
+      #cvat-shortcut-settings .shortcut-remove { padding:7px 0; color:#8a5360; font-size:18px; line-height:20px; }
+      #cvat-shortcut-settings .shortcut-remove:hover { background:#fff0f1; border-color:#f3c4c8; color:#bd3445; }
+      #cvat-shortcut-settings .shortcut-message { margin:0; padding:0 26px; color:#bd3445; font-size:13px; }
+      #cvat-shortcut-settings .shortcut-message:empty { display:none; }
+      #cvat-shortcut-settings .shortcut-footer { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:16px 26px 22px; }
+      #cvat-shortcut-settings .shortcut-footer .shortcut-save { margin-left:auto; background:#1769c2; border-color:#1769c2; color:white; }
+      #cvat-shortcut-settings .shortcut-footer .shortcut-save:hover { background:#125aa9; }
+      @media (max-width:560px) { #cvat-shortcut-settings .shortcut-header { padding:20px 16px 12px; } #cvat-shortcut-settings .shortcut-table { padding:0 16px; } #cvat-shortcut-settings .shortcut-columns, #cvat-shortcut-settings .shortcut-row { grid-template-columns:minmax(65px,1fr) minmax(80px,1fr) minmax(80px,1.3fr) 36px; gap:5px; } #cvat-shortcut-settings input, #cvat-shortcut-settings select { padding:0 5px; font-size:12px; } #cvat-shortcut-settings .shortcut-footer { padding:14px 16px 18px; } }
+    </style>`;
     const box = document.createElement('div');
-    box.style.cssText = 'background:white;border-radius:8px;padding:18px;width:min(700px,95vw);max-height:85vh;overflow:auto;box-shadow:0 4px 25px #0006';
+    box.className = 'shortcut-dialog';
     overlay.appendChild(box);
-    const title = document.createElement('h3'); title.textContent = 'Bảng phím tắt đổi label'; box.appendChild(title);
-    const help = document.createElement('p'); help.textContent = 'Nhấp vào ô phím rồi bấm tổ hợp muốn dùng. Số CVAT là nhãn tương ứng Ctrl+0 đến Ctrl+9; tên label phải khớp tên trong task. Cấu hình lưu riêng cho từng địa chỉ CVAT.'; box.appendChild(help);
-    const table = document.createElement('div'); box.appendChild(table);
-    const message = document.createElement('p'); message.style.color = '#b42318'; box.appendChild(message);
+    const header = document.createElement('div'); header.className = 'shortcut-header'; box.appendChild(header);
+    const title = document.createElement('h3'); title.textContent = 'Phím tắt đổi label'; header.appendChild(title);
+    const help = document.createElement('p'); help.className = 'shortcut-help'; help.textContent = 'Nhấp vào ô phím rồi bấm tổ hợp muốn dùng. Số CVAT là nhãn tương ứng Ctrl+0 đến Ctrl+9; tên label phải khớp tên trong task. Cấu hình lưu riêng cho từng địa chỉ CVAT.'; header.appendChild(help);
+    const table = document.createElement('div'); table.className = 'shortcut-table'; box.appendChild(table);
+    const message = document.createElement('p'); message.className = 'shortcut-message'; box.appendChild(message);
+    const footer = document.createElement('div'); footer.className = 'shortcut-footer'; box.appendChild(footer);
     let rows = shortcuts.map(x => ({ ...x }));
     function render() {
       table.replaceChildren();
+      const columns = document.createElement('div'); columns.className = 'shortcut-columns';
+      for (const text of ['Phím tắt', 'Loại', 'Giá trị', '']) { const item = document.createElement('span'); item.textContent = text; columns.appendChild(item); }
+      table.appendChild(columns);
       rows.forEach((row, index) => {
-        const line = document.createElement('div'); line.style.cssText = 'display:flex;gap:6px;margin:6px 0;align-items:center';
-        const key = document.createElement('input'); key.type = 'text'; key.readOnly = true; key.value = row.shortcut; key.placeholder = 'Bấm phím'; key.style.cssText = 'width:125px;padding:6px'; key.title = 'Nhấp vào đây rồi bấm tổ hợp phím';
+        const line = document.createElement('div'); line.className = 'shortcut-row';
+        const key = document.createElement('input'); key.type = 'text'; key.readOnly = true; key.value = row.shortcut; key.placeholder = 'Bấm phím'; key.title = 'Nhấp vào đây rồi bấm tổ hợp phím';
         key.addEventListener('keydown', e => { e.preventDefault(); e.stopImmediatePropagation(); const name = keyName(e); if (name) { row.shortcut = name; key.value = name; } }, true);
-        const type = document.createElement('select'); type.style.padding = '6px';
+        const type = document.createElement('select');
         for (const [value, label] of [['number', 'Số CVAT'], ['name', 'Tên label']]) { const opt = document.createElement('option'); opt.value = value; opt.textContent = label; type.appendChild(opt); }
         type.value = row.type; type.addEventListener('change', () => { row.type = type.value; value.placeholder = row.type === 'name' ? 'Tên label chính xác' : 'Số từ 0 đến 9'; });
-        const value = document.createElement('input'); value.type = 'text'; value.value = row.value; value.placeholder = row.type === 'name' ? 'Tên label chính xác' : 'Số từ 0 đến 9'; value.style.cssText = 'flex:1;min-width:70px;padding:6px'; value.addEventListener('input', () => { row.value = value.value; });
-        const remove = document.createElement('button'); remove.textContent = 'Xóa'; remove.onclick = () => { rows.splice(index, 1); render(); };
+        const value = document.createElement('input'); value.type = 'text'; value.value = row.value; value.placeholder = row.type === 'name' ? 'Tên label chính xác' : 'Số từ 0 đến 9'; value.addEventListener('input', () => { row.value = value.value; });
+        const remove = document.createElement('button'); remove.textContent = '×'; remove.className = 'shortcut-remove'; remove.title = 'Xóa dòng'; remove.setAttribute('aria-label', 'Xóa dòng'); remove.onclick = () => { rows.splice(index, 1); render(); };
         line.append(key, type, value, remove); table.appendChild(line);
       });
     }
-    function button(text, action) { const b = document.createElement('button'); b.textContent = text; b.style.cssText = 'margin:6px 8px 0 0;padding:7px 12px'; b.onclick = action; box.appendChild(b); }
+    function button(text, action, className = '') { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.className = className; b.onclick = action; footer.appendChild(b); }
     button('Thêm dòng', () => { rows.push({ shortcut:'', type:'name', value:'' }); render(); });
     button('Mặc định', () => { rows = defaults.map(x => ({ ...x })); message.textContent = ''; render(); });
-    button('Lưu', () => {
+    button('Đóng', () => overlay.remove());
+    button('Lưu thay đổi', () => {
       const seen = new Set();
       for (const row of rows) {
         row.value = row.value.trim();
@@ -461,8 +491,7 @@
       }
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(rows)); shortcuts = rows.map(x => ({ ...x })); overlay.remove(); }
       catch (error) { message.textContent = 'Không lưu được cấu hình: ' + error.message; }
-    });
-    button('Đóng', () => overlay.remove());
+    }, 'shortcut-save');
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
     document.body.appendChild(overlay); render();
   }
