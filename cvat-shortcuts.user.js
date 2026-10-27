@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CVAT - khóa zoom, Switch label nhanh và Edit mask
 // @namespace    cvat-internal-shortcuts
-// @version      1.6.8
+// @version      1.7.0
 // @description  Khóa zoom, đổi nhãn, Edit mask, chỉnh brush; chặn chọn chữ/menu ngoài ô nhập, giữ Alt để copy
 // @match        http://10.43.2.147:8080/*
 // @match        http://10.43.2.12:8080/*
@@ -273,7 +273,7 @@
   }
 
   // Đổi nhãn của object đang chọn thành licenseplate.
-  async function switchActiveObjectToLicenseplate() {
+  async function switchActiveObjectToLabel(labelName) {
     if (switchingLicenseplate) return;
 
     const activeObjects = document.querySelectorAll(
@@ -338,7 +338,7 @@
       }
 
       input.focus();
-      setSearch(input, 'licenseplate');
+      setSearch(input, labelName);
 
       // Chờ kết quả tìm kiếm, kể cả nhãn cuối danh sách.
       for (let attempt = 0; attempt < 30; attempt++) {
@@ -365,7 +365,7 @@
             '';
 
           return (
-            name.trim().toLowerCase() === 'licenseplate' &&
+            name.trim().toLowerCase() === labelName.trim().toLowerCase() &&
             isVisible(item) &&
             !item.classList.contains('ant-select-item-option-disabled')
           );
@@ -385,37 +385,96 @@
         return;
       }
 
-      console.warn('[CVAT] Không tìm thấy nhãn licenseplate trong menu.');
+      console.warn('[CVAT] Không tìm thấy nhãn:', labelName);
     } catch (error) {
-      console.error('[CVAT] Lỗi chọn licenseplate:', error);
+      console.error('[CVAT] Lỗi chọn nhãn:', error);
     } finally {
       closeSearch(input);
       switchingLicenseplate = false;
     }
   }
 
-  // Phím thường -> shortcut Ctrl+số mặc định.
-  const plainKeys = {
-    'y': '1', // person
-    's': '2', // car
-    'u': '3', // bus
-    'o': '4', // truck
-    '0': '0', // Cùng shortcut Ctrl+0; vẫn giữ Shift+S cho _skip
-    '1': '1', // person
-    '2': '2', // car
-    '3': '3', // bus
-    '4': '4', // truck
-    '5': '5', // Nhãn đang được CVAT gán cho Ctrl+5
-    '6': '6', // Nhãn đang được CVAT gán cho Ctrl+6
-    '7': '7', // Nhãn đang được CVAT gán cho Ctrl+7
-    '8': '8', // face
-    '9': '9', // head
+  // Bảng phím được lưu riêng theo từng origin của CVAT.
+  const STORAGE_KEY = 'cvat-shortcuts-label-settings-v1';
+  const defaults = [
+    ...Object.entries({ y:'1', s:'2', u:'3', o:'4', '0':'0', '1':'1', '2':'2', '3':'3', '4':'4', '5':'5', '6':'6', '7':'7', '8':'8', '9':'9' })
+      .map(([key, value]) => ({ shortcut: key.toUpperCase(), type: 'number', value })),
+    { shortcut: 'Alt+3', type: 'number', value: '3' },
+    { shortcut: 'Alt+2', type: 'number', value: '4' },
+    { shortcut: 'Shift+S', type: 'number', value: '0' },
+    { shortcut: 'Alt+`', type: 'name', value: 'licenseplate' },
+  ];
+  const keyName = (event) => {
+    const code = event.code;
+    const key = /^Key[A-Z]$/.test(code) ? code.slice(3) :
+      /^Digit[0-9]$/.test(code) ? code.slice(5) :
+      code === 'Backquote' ? '`' : event.key.length === 1 ? event.key.toUpperCase() : event.key;
+    if (['Control', 'Alt', 'Shift', 'Meta', 'Unidentified'].includes(key)) return '';
+    return [event.ctrlKey && 'Ctrl', event.altKey && 'Alt', event.shiftKey && 'Shift', event.metaKey && 'Meta', key].filter(Boolean).join('+');
   };
-
-  const altKeys = {
-    '3': '3', // motorbike
-    '2': '4', // bicycle
-  };
+  function loadSettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (Array.isArray(saved) && saved.every(x => x && typeof x.shortcut === 'string' && ['number', 'name'].includes(x.type) && typeof x.value === 'string')) return saved;
+    } catch (error) { console.warn('[CVAT] Không đọc được cấu hình:', error); }
+    return defaults.map(x => ({ ...x }));
+  }
+  let shortcuts = loadSettings();
+  function openSettings() {
+    if (document.getElementById('cvat-shortcut-settings')) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'cvat-shortcut-settings';
+    overlay.style.cssText = 'position:fixed;inset:0;background:#0009;z-index:2147483647;display:flex;align-items:center;justify-content:center;font:14px Arial;color:#222';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:white;border-radius:8px;padding:18px;width:min(700px,95vw);max-height:85vh;overflow:auto;box-shadow:0 4px 25px #0006';
+    overlay.appendChild(box);
+    const title = document.createElement('h3'); title.textContent = 'Bảng phím tắt đổi label'; box.appendChild(title);
+    const help = document.createElement('p'); help.textContent = 'Nhấp vào ô phím rồi bấm tổ hợp muốn dùng. Số CVAT là nhãn tương ứng Ctrl+0 đến Ctrl+9; tên label phải khớp tên trong task. Cấu hình lưu riêng cho từng địa chỉ CVAT.'; box.appendChild(help);
+    const table = document.createElement('div'); box.appendChild(table);
+    const message = document.createElement('p'); message.style.color = '#b42318'; box.appendChild(message);
+    let rows = shortcuts.map(x => ({ ...x }));
+    function render() {
+      table.replaceChildren();
+      rows.forEach((row, index) => {
+        const line = document.createElement('div'); line.style.cssText = 'display:flex;gap:6px;margin:6px 0;align-items:center';
+        const key = document.createElement('input'); key.type = 'text'; key.readOnly = true; key.value = row.shortcut; key.placeholder = 'Bấm phím'; key.style.cssText = 'width:125px;padding:6px'; key.title = 'Nhấp vào đây rồi bấm tổ hợp phím';
+        key.addEventListener('keydown', e => { e.preventDefault(); e.stopImmediatePropagation(); const name = keyName(e); if (name) { row.shortcut = name; key.value = name; } }, true);
+        const type = document.createElement('select'); type.style.padding = '6px';
+        for (const [value, label] of [['number', 'Số CVAT'], ['name', 'Tên label']]) { const opt = document.createElement('option'); opt.value = value; opt.textContent = label; type.appendChild(opt); }
+        type.value = row.type; type.addEventListener('change', () => { row.type = type.value; value.placeholder = row.type === 'name' ? 'Tên label chính xác' : 'Số từ 0 đến 9'; });
+        const value = document.createElement('input'); value.type = 'text'; value.value = row.value; value.placeholder = row.type === 'name' ? 'Tên label chính xác' : 'Số từ 0 đến 9'; value.style.cssText = 'flex:1;min-width:70px;padding:6px'; value.addEventListener('input', () => { row.value = value.value; });
+        const remove = document.createElement('button'); remove.textContent = 'Xóa'; remove.onclick = () => { rows.splice(index, 1); render(); };
+        line.append(key, type, value, remove); table.appendChild(line);
+      });
+    }
+    function button(text, action) { const b = document.createElement('button'); b.textContent = text; b.style.cssText = 'margin:6px 8px 0 0;padding:7px 12px'; b.onclick = action; box.appendChild(b); }
+    button('Thêm dòng', () => { rows.push({ shortcut:'', type:'name', value:'' }); render(); });
+    button('Mặc định', () => { rows = defaults.map(x => ({ ...x })); message.textContent = ''; render(); });
+    button('Lưu', () => {
+      const seen = new Set();
+      for (const row of rows) {
+        row.value = row.value.trim();
+        if (!row.shortcut || !row.value || (row.type === 'number' && !/^[0-9]$/.test(row.value))) { message.textContent = 'Hãy nhập phím và giá trị hợp lệ; số CVAT phải từ 0 đến 9.'; return; }
+        if (seen.has(row.shortcut)) { message.textContent = 'Phím bị trùng: ' + row.shortcut; return; }
+        if (['Q', 'R', 'Alt+Q'].includes(row.shortcut)) { message.textContent = 'Phím ' + row.shortcut + ' đang dùng cho công cụ mask; hãy chọn phím khác.'; return; }
+        seen.add(row.shortcut);
+      }
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(rows)); shortcuts = rows.map(x => ({ ...x })); overlay.remove(); }
+      catch (error) { message.textContent = 'Không lưu được cấu hình: ' + error.message; }
+    });
+    button('Đóng', () => overlay.remove());
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay); render();
+  }
+  function installSettingsButton() {
+    if (!document.body || document.getElementById('cvat-shortcut-settings-button')) return;
+    const button = document.createElement('button'); button.id = 'cvat-shortcut-settings-button';
+    button.textContent = '⌨ Phím tắt'; button.title = 'Cấu hình phím tắt đổi label';
+    button.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:2147483646;padding:7px 10px;background:#1677ff;color:white;border:0;border-radius:5px;cursor:pointer';
+    button.onclick = openSettings; document.body.appendChild(button);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installSettingsButton, { once:true });
+  else installSettingsButton();
 
   let switchingBrushForm = false;
 
@@ -520,57 +579,17 @@
       return;
     }
 
-    const isLicenseplateShortcut =
-      event.code === 'Backquote' &&
-      event.altKey &&
-      !event.ctrlKey &&
-      !event.shiftKey &&
-      !event.metaKey;
-
-    if (isLicenseplateShortcut) {
-      // Cho phép thử lại nếu focus còn trong ô nhãn của object đang chọn.
-      const inActiveLabelSelector =
-        event.target instanceof Element &&
-        Boolean(event.target.closest(
-          '.cvat-objects-sidebar-state-active-item ' +
-          '.cvat-objects-sidebar-state-item-label-selector'
-        ));
-
-      if (isEditing(event.target) && !inActiveLabelSelector) return;
-
+    if (document.getElementById('cvat-shortcut-settings')) return;
+    if (isEditing(event.target) || !document.querySelector('.cvat-objects-sidebar')) return;
+    const mapping = shortcuts.find(item => item.shortcut === keyName(event));
+    if (!mapping) return;
+    if (mapping.type === 'name') {
       event.preventDefault();
       event.stopImmediatePropagation();
-
-      if (event.type === 'keydown' && !event.repeat) {
-        void switchActiveObjectToLicenseplate();
-      }
-
+      if (event.type === 'keydown' && !event.repeat) void switchActiveObjectToLabel(mapping.value);
       return;
     }
-
-    if (
-      isEditing(event.target) ||
-      event.ctrlKey ||
-      event.metaKey
-    ) return;
-
-    // Chỉ đổi phím trong màn hình annotation có Object sidebar.
-    if (!document.querySelector('.cvat-objects-sidebar')) return;
-
-    // Dùng vị trí phím để Caps Lock/bố cục bàn phím không đổi mapping.
-    const physicalKey = /^(?:Key([A-Z])|Digit([0-9]))$/.exec(event.code);
-    const key = (physicalKey ? physicalKey[1] || physicalKey[2] : event.key).toLowerCase();
-    let labelNumber = null;
-
-    if (event.altKey && !event.shiftKey) {
-      labelNumber = altKeys[key] || null;
-    } else if (event.shiftKey && !event.altKey && key === 's') {
-      labelNumber = '0'; // _skip
-    } else if (!event.altKey && !event.shiftKey) {
-      labelNumber = plainKeys[key] || null;
-    }
-
-    if (!labelNumber) return;
+    const labelNumber = mapping.value;
 
     // Chặn keypress chữ gốc; vẫn cho CVAT nhận Ctrl+số qua propagation.
     if (event.type === 'keydown') event.preventDefault();
