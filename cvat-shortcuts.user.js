@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CVAT - khóa zoom, Switch label nhanh và Edit mask
 // @namespace    cvat-internal-shortcuts
-// @version      1.7.0
+// @version      1.7.1
 // @description  Khóa zoom, đổi nhãn, Edit mask, chỉnh brush; chặn chọn chữ/menu ngoài ô nhập, giữ Alt để copy
 // @match        http://10.43.2.147:8080/*
 // @match        http://10.43.2.12:8080/*
@@ -467,14 +467,33 @@
     document.body.appendChild(overlay); render();
   }
   function installSettingsButton() {
-    if (!document.body || document.getElementById('cvat-shortcut-settings-button')) return;
-    const button = document.createElement('button'); button.id = 'cvat-shortcut-settings-button';
-    button.textContent = '⌨ Phím tắt'; button.title = 'Cấu hình phím tắt đổi label';
-    button.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:2147483646;padding:7px 10px;background:#1677ff;color:white;border:0;border-radius:5px;cursor:pointer';
-    button.onclick = openSettings; document.body.appendChild(button);
+    const fullscreen = document.querySelector('.cvat-annotation-header-fullscreen-button');
+    if (!fullscreen || !fullscreen.parentElement) return;
+    let button = document.getElementById('cvat-shortcut-settings-button');
+    if (!button) {
+      button = document.createElement('button');
+      button.id = 'cvat-shortcut-settings-button';
+      button.type = 'button';
+      button.className = 'ant-btn ant-btn-link cvat-annotation-header-button';
+      button.title = 'Cấu hình phím tắt đổi label';
+      const icon = document.createElement('span');
+      icon.textContent = '⌨';
+      icon.style.cssText = 'font-size:20px;line-height:22px';
+      const label = document.createElement('span');
+      label.textContent = 'Phím tắt';
+      button.append(icon, label);
+      button.onclick = openSettings;
+    }
+    if (button.parentElement !== fullscreen.parentElement || button.nextElementSibling !== fullscreen) {
+      fullscreen.before(button);
+    }
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installSettingsButton, { once:true });
-  else installSettingsButton();
+  function observeSettingsButton() {
+    installSettingsButton();
+    new MutationObserver(installSettingsButton).observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observeSettingsButton, { once:true });
+  else observeSettingsButton();
 
   let switchingBrushForm = false;
 
