@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CVAT - khóa zoom, Switch label nhanh và Edit mask
 // @namespace    cvat-internal-shortcuts
-// @version      1.8.0
+// @version      1.8.1
 // @description  Khóa zoom, đổi nhãn, Edit mask, chỉnh brush; chặn chọn chữ/menu ngoài ô nhập, giữ Alt để copy
 // @match        http://10.43.2.147:8080/*
 // @match        http://10.43.2.12:8080/*
@@ -119,6 +119,9 @@
 
   // Ctrl hoặc Shift + lăn lên tăng 2; lăn xuống giảm 5.
 
+  const BRUSH_WHEEL_INCREASE = 2;
+  const BRUSH_WHEEL_DECREASE = 5;
+
   // Ctrl/Shift + lăn: chỉnh brush khi toolbox mở; Ctrl luôn chặn zoom.
   window.addEventListener('wheel', (event) => {
     if (!event.ctrlKey && !event.shiftKey) return;
@@ -160,7 +163,7 @@
     const maximum = maximumText ? Number(maximumText) : Infinity;
     const lower = Number.isFinite(minimum) ? Math.max(1, minimum) : 1;
     const upper = Number.isFinite(maximum) ? maximum : Infinity;
-    const adjustment = event.deltaY < 0 ? maskSettings.increase : -maskSettings.decrease;
+    const adjustment = event.deltaY < 0 ? BRUSH_WHEEL_INCREASE : -BRUSH_WHEEL_DECREASE;
     const next = Math.min(upper, Math.max(lower,
       Math.round(current) + adjustment
     ));
@@ -425,17 +428,13 @@
     ['eraser', 'Eraser — xóa mask', 'E'],
     ['polygon-plus', 'Polygon — thêm vùng', 'Q'],
     ['polygon-minus', 'Polygon — bớt vùng', 'R'],
-    ['size-up', 'Tăng kích thước brush', ']'],
-    ['size-down', 'Giảm kích thước brush', '['],
-    ['size-input', 'Nhập kích thước brush', 'Alt+B'],
     ['form', 'Đổi Circle / Square', 'Alt+Q'],
   ];
   const maskDefaults = Object.fromEntries(maskActions.map(([id, , key]) => [id, key]));
-  let maskSettings = { ...maskDefaults, increase: 2, decrease: 5 };
+  let maskSettings = { ...maskDefaults };
   try {
     const saved = JSON.parse(localStorage.getItem(MASK_STORAGE_KEY));
-    if (saved && maskActions.every(([id]) => typeof saved[id] === 'string') &&
-      Number.isInteger(saved.increase) && saved.increase > 0 && Number.isInteger(saved.decrease) && saved.decrease > 0) maskSettings = saved;
+    if (saved && maskActions.every(([id]) => typeof saved[id] === 'string')) maskSettings = saved;
   } catch (error) { console.warn('[CVAT] Không đọc được cấu hình mask:', error); }
   function openSettings() {
     if (document.getElementById('cvat-shortcut-settings')) return;
@@ -480,18 +479,12 @@
     function render() {
       table.replaceChildren();
       const maskTitle = document.createElement('h3'); maskTitle.textContent = 'Edit mask / DPM'; maskTitle.style.cssText = 'font-size:16px;margin:18px 0 8px'; table.appendChild(maskTitle);
-      const note = document.createElement('p'); note.textContent = 'Áp dụng khi thanh mask mở trên server này. Để trống phím để tắt. Ctrl/Shift + lăn chuột dùng mức tăng/giảm bên dưới.'; note.className = 'shortcut-help'; table.appendChild(note);
+      const note = document.createElement('p'); note.textContent = 'Áp dụng khi thanh mask mở trên server này. Để trống phím để tắt. Xóa phím đã gán bằng Backspace hoặc Delete.'; note.className = 'shortcut-help'; table.appendChild(note);
       for (const [id, label] of maskActions) {
         const line = document.createElement('div'); line.className = 'shortcut-row'; line.style.gridTemplateColumns = '1fr 160px';
         const text = document.createElement('span'); text.textContent = label;
         const input = document.createElement('input'); input.readOnly = true; input.value = maskDraft[id]; input.placeholder = 'Chưa gán'; input.setAttribute('aria-label', label);
         input.addEventListener('keydown', e => { e.preventDefault(); e.stopImmediatePropagation(); if (['Backspace', 'Delete'].includes(e.key)) { maskDraft[id] = ''; input.value = ''; return; } const key = keyName(e); if (key) { maskDraft[id] = key; input.value = key; } }, true);
-        line.append(text, input); table.appendChild(line);
-      }
-      for (const [id, label] of [['increase', 'Mức tăng brush'], ['decrease', 'Mức giảm brush']]) {
-        const line = document.createElement('div'); line.className = 'shortcut-row'; line.style.gridTemplateColumns = '1fr 160px';
-        const text = document.createElement('span'); text.textContent = label;
-        const input = document.createElement('input'); input.type = 'number'; input.min = '1'; input.step = '1'; input.value = maskDraft[id]; input.setAttribute('aria-label', label); input.oninput = () => { maskDraft[id] = Number(input.value); };
         line.append(text, input); table.appendChild(line);
       }
       const labelTitle = document.createElement('h3'); labelTitle.textContent = 'Đổi label'; labelTitle.style.cssText = 'font-size:16px;margin:22px 0 8px'; table.appendChild(labelTitle);
@@ -513,12 +506,11 @@
     }
     function button(text, action, className = '') { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.className = className; b.onclick = action; footer.appendChild(b); }
     button('Thêm dòng', () => { rows.push({ shortcut:'', type:'name', value:'' }); render(); });
-    button('Mặc định', () => { rows = defaults.map(x => ({ ...x })); maskDraft = { ...maskDefaults, increase: 2, decrease: 5 }; message.textContent = ''; render(); });
+    button('Mặc định', () => { rows = defaults.map(x => ({ ...x })); maskDraft = { ...maskDefaults }; message.textContent = ''; render(); });
     button('Đóng', () => overlay.remove());
     button('Lưu thay đổi', () => {
       const maskKeys = maskActions.map(([id]) => maskDraft[id]).filter(Boolean);
       if (new Set(maskKeys).size !== maskKeys.length) { message.textContent = 'Phím trong Edit mask bị trùng.'; return; }
-      if (!['increase', 'decrease'].every(id => Number.isInteger(maskDraft[id]) && maskDraft[id] > 0)) { message.textContent = 'Mức tăng/giảm brush phải là số nguyên lớn hơn 0.'; return; }
       const seen = new Set();
       for (const row of rows) {
         row.value = row.value.trim();
@@ -634,26 +626,15 @@
     const inSize = event.target instanceof Element && event.target.closest('.cvat-brush-tools-brush-size');
     if (action && (!isEditing(event.target) || inSize)) {
       const [id] = action;
-      const input = toolbox.querySelector('.cvat-brush-tools-brush-size input');
       const selector = id === 'form' ? findBrushFormSelector() : null;
       const button = toolbox.querySelector('.cvat-brush-tools-' + id);
-      const available = id === 'form' ? selector : id.startsWith('size-') ?
-        input && isVisible(input) && !input.disabled && !input.readOnly :
+      const available = id === 'form' ? selector :
         button && isVisible(button) && !button.disabled && button.getAttribute('aria-disabled') !== 'true';
       if (!available) return;
       event.preventDefault(); event.stopImmediatePropagation();
       if (event.type !== 'keydown' || event.repeat) return;
       if (id === 'form') void toggleBrushForm(selector);
-      else if (id === 'size-input') { input.focus(); input.select(); }
-      else if (id === 'size-up' || id === 'size-down') {
-        const current = Number(input.value);
-        if (!input.value.trim() || !Number.isFinite(current)) return;
-        const min = Number(input.getAttribute('aria-valuemin') || input.min || 1);
-        const max = Number(input.getAttribute('aria-valuemax') || input.max || Infinity);
-        const next = Math.max(Number.isFinite(min) ? Math.max(1, min) : 1, Math.min(Number.isFinite(max) ? max : Infinity,
-          Math.round(current) + (id === 'size-up' ? maskSettings.increase : -maskSettings.decrease)));
-        setNativeValue(input, String(next)); input.dispatchEvent(new Event('input', { bubbles: true }));
-      } else button.click();
+      else button.click();
       return;
     }
 
