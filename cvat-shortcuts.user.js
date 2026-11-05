@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CVAT - khóa zoom, Switch label nhanh và Edit mask
 // @namespace    cvat-internal-shortcuts
-// @version      1.8.1
+// @version      1.9.0
 // @description  Khóa zoom, đổi nhãn, Edit mask, chỉnh brush; chặn chọn chữ/menu ngoài ô nhập, giữ Alt để copy
 // @match        http://10.43.2.147:8080/*
 // @match        http://10.43.2.12:8080/*
@@ -190,7 +190,7 @@
   }
 
   function pressEnter(el) {
-    for (const type of ['keydown', 'keypress', 'keyup']) {
+    for (const type of ['keydown', 'keypress', 'keyup', 'mousedown']) {
       el.dispatchEvent(
         new KeyboardEvent(type, {
           key: 'Enter',
@@ -406,6 +406,10 @@
     { shortcut: 'Alt+`', type: 'name', value: 'licenseplate' },
   ];
   const keyName = (event) => {
+    if (event.type === 'mousedown') {
+      const mouse = { 0: 'MouseLeft', 1: 'MouseMiddle', 2: 'MouseRight', 3: 'MouseBack', 4: 'MouseForward' }[event.button];
+      return mouse ? [event.ctrlKey && 'Ctrl', event.altKey && 'Alt', event.shiftKey && 'Shift', event.metaKey && 'Meta', mouse].filter(Boolean).join('+') : '';
+    }
     const code = event.code;
     const key = /^Key[A-Z]$/.test(code) ? code.slice(3) :
       /^Digit[0-9]$/.test(code) ? code.slice(5) :
@@ -429,6 +433,7 @@
     ['polygon-plus', 'Polygon — thêm vùng', 'Q'],
     ['polygon-minus', 'Polygon — bớt vùng', 'R'],
     ['form', 'Đổi Circle / Square', 'Alt+Q'],
+    ['rectangle', 'Draw rectangle', ''],
   ];
   const maskDefaults = Object.fromEntries(maskActions.map(([id, , key]) => [id, key]));
   let maskSettings = { ...maskDefaults };
@@ -470,7 +475,7 @@
     overlay.appendChild(box);
     const header = document.createElement('div'); header.className = 'shortcut-header'; box.appendChild(header);
     const title = document.createElement('h3'); title.textContent = 'Cài đặt phím tắt'; header.appendChild(title);
-    const help = document.createElement('p'); help.className = 'shortcut-help'; help.textContent = 'Nhấp vào ô phím rồi bấm tổ hợp muốn dùng. Số CVAT là nhãn tương ứng Ctrl+0 đến Ctrl+9; tên label phải khớp tên trong task. Cấu hình lưu riêng cho từng địa chỉ CVAT.'; header.appendChild(help);
+    const help = document.createElement('p'); help.className = 'shortcut-help'; help.textContent = 'Nhấp vào ô phím rồi bấm phím hoặc nút chuột muốn gán. Số CVAT là nhãn tương ứng Ctrl+0 đến Ctrl+9; tên label phải khớp tên trong task. Cấu hình lưu riêng cho từng địa chỉ CVAT.'; header.appendChild(help);
     const table = document.createElement('div'); table.className = 'shortcut-table'; box.appendChild(table);
     const message = document.createElement('p'); message.className = 'shortcut-message'; box.appendChild(message);
     const footer = document.createElement('div'); footer.className = 'shortcut-footer'; box.appendChild(footer);
@@ -479,12 +484,13 @@
     function render() {
       table.replaceChildren();
       const maskTitle = document.createElement('h3'); maskTitle.textContent = 'Edit mask / DPM'; maskTitle.style.cssText = 'font-size:16px;margin:18px 0 8px'; table.appendChild(maskTitle);
-      const note = document.createElement('p'); note.textContent = 'Áp dụng khi thanh mask mở trên server này. Để trống phím để tắt. Xóa phím đã gán bằng Backspace hoặc Delete.'; note.className = 'shortcut-help'; table.appendChild(note);
+      const note = document.createElement('p'); note.textContent = 'Các phím mask dùng khi thanh mask mở. Draw rectangle dùng trong màn hình annotation. Gán bằng bàn phím hoặc chuột; xóa bằng Backspace/Delete.'; note.className = 'shortcut-help'; table.appendChild(note);
       for (const [id, label] of maskActions) {
         const line = document.createElement('div'); line.className = 'shortcut-row'; line.style.gridTemplateColumns = '1fr 160px';
         const text = document.createElement('span'); text.textContent = label;
         const input = document.createElement('input'); input.readOnly = true; input.value = maskDraft[id]; input.placeholder = 'Chưa gán'; input.setAttribute('aria-label', label);
-        input.addEventListener('keydown', e => { e.preventDefault(); e.stopImmediatePropagation(); if (['Backspace', 'Delete'].includes(e.key)) { maskDraft[id] = ''; input.value = ''; return; } const key = keyName(e); if (key) { maskDraft[id] = key; input.value = key; } }, true);
+        const assign = e => { e.preventDefault(); e.stopImmediatePropagation(); if (e.type === 'keydown' && ['Backspace', 'Delete'].includes(e.key)) { maskDraft[id] = ''; input.value = ''; return; } const key = keyName(e); if (key) { maskDraft[id] = key; input.value = key; } };
+        input.addEventListener('keydown', assign, true); input.addEventListener('mousedown', assign, true);
         line.append(text, input); table.appendChild(line);
       }
       const labelTitle = document.createElement('h3'); labelTitle.textContent = 'Đổi label'; labelTitle.style.cssText = 'font-size:16px;margin:22px 0 8px'; table.appendChild(labelTitle);
@@ -495,7 +501,8 @@
       rows.forEach((row, index) => {
         const line = document.createElement('div'); line.className = 'shortcut-row';
         const key = document.createElement('input'); key.type = 'text'; key.readOnly = true; key.value = row.shortcut; key.placeholder = 'Bấm phím'; key.title = 'Nhấp vào đây rồi bấm tổ hợp phím';
-        key.addEventListener('keydown', e => { e.preventDefault(); e.stopImmediatePropagation(); const name = keyName(e); if (name) { row.shortcut = name; key.value = name; } }, true);
+        const assign = e => { e.preventDefault(); e.stopImmediatePropagation(); const name = keyName(e); if (name) { row.shortcut = name; key.value = name; } };
+        key.addEventListener('keydown', assign, true); key.addEventListener('mousedown', assign, true);
         const type = document.createElement('select');
         for (const [value, label] of [['number', 'Số CVAT'], ['name', 'Tên label']]) { const opt = document.createElement('option'); opt.value = value; opt.textContent = label; type.appendChild(opt); }
         type.value = row.type; type.addEventListener('change', () => { row.type = type.value; value.placeholder = row.type === 'name' ? 'Tên label chính xác' : 'Số từ 0 đến 9'; });
@@ -617,10 +624,33 @@
     }
   }
 
+  async function activateRectangleDrawing(control) {
+    const active = control.classList.contains('cvat-active-canvas-control');
+    if (!active) {
+      control.click();
+      for (let i = 0; i < 30; i++) {
+        await wait(50);
+        const draw = document.querySelector('.cvat-draw-rectangle-shape-button');
+        if (isVisible(draw)) { draw.click(); return; }
+      }
+      console.warn('[CVAT] Không mở được bảng Draw rectangle.');
+    } else control.click();
+  }
+
   function handleLabelShortcut(event) {
     if (event.isComposing) return;
 
     if (document.getElementById('cvat-shortcut-settings')) return;
+    if (event.type === 'mousedown' && event.button < 3 && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) return;
+    const rectKey = maskSettings.rectangle;
+    if (rectKey && rectKey === keyName(event)) {
+      if (isEditing(event.target)) return;
+      const control = document.querySelector('.cvat-draw-rectangle-control:not(.cvat-disabled-canvas-control)');
+      if (!control) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (event.type === 'keydown' && !event.repeat) void activateRectangleDrawing(control);
+      return;
+    }
     const toolbox = [...document.querySelectorAll('.cvat-brush-tools-toolbox')].find(isVisible);
     const action = toolbox && maskActions.find(([id]) => maskSettings[id] && maskSettings[id] === keyName(event));
     const inSize = event.target instanceof Element && event.target.closest('.cvat-brush-tools-brush-size');
@@ -679,7 +709,7 @@
     }
   }
 
-  for (const type of ['keydown', 'keypress', 'keyup']) {
+  for (const type of ['keydown', 'keypress', 'keyup', 'mousedown']) {
     window.addEventListener(type, handleLabelShortcut, true);
   }
 })();
