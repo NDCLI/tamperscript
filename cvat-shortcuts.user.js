@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CVAT - khóa zoom, Switch label nhanh và Edit mask
 // @namespace    cvat-internal-shortcuts
-// @version      1.9.0
+// @version      1.9.1
 // @description  Khóa zoom, đổi nhãn, Edit mask, chỉnh brush; chặn chọn chữ/menu ngoài ô nhập, giữ Alt để copy
 // @match        http://10.43.2.147:8080/*
 // @match        http://10.43.2.12:8080/*
@@ -480,6 +480,16 @@
     const message = document.createElement('p'); message.className = 'shortcut-message'; box.appendChild(message);
     const footer = document.createElement('div'); footer.className = 'shortcut-footer'; box.appendChild(footer);
     let rows = shortcuts.map(x => ({ ...x }));
+    let armedInput = null;
+    const armInput = (input) => { armedInput = input; input.placeholder = 'Bấm phím hoặc nút chuột…'; input.style.borderColor = '#1769c2'; };
+    const disarmInput = () => { if (armedInput) { armedInput.placeholder = 'Nhấp để gán phím/chuột'; armedInput.style.borderColor = ''; armedInput = null; } };
+    overlay.addEventListener('mousedown', e => {
+      if (!armedInput) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      const name = keyName(e);
+      const input = armedInput; disarmInput();
+      if (name) { const event = new CustomEvent('shortcut-mouse-assigned', { detail: name }); input.dispatchEvent(event); }
+    }, true);
     let maskDraft = { ...maskSettings };
     function render() {
       table.replaceChildren();
@@ -489,8 +499,8 @@
         const line = document.createElement('div'); line.className = 'shortcut-row'; line.style.gridTemplateColumns = '1fr 160px';
         const text = document.createElement('span'); text.textContent = label;
         const input = document.createElement('input'); input.readOnly = true; input.value = maskDraft[id]; input.placeholder = 'Chưa gán'; input.setAttribute('aria-label', label);
-        const assign = e => { e.preventDefault(); e.stopImmediatePropagation(); if (e.type === 'keydown' && ['Backspace', 'Delete'].includes(e.key)) { maskDraft[id] = ''; input.value = ''; return; } const key = keyName(e); if (key) { maskDraft[id] = key; input.value = key; } };
-        input.addEventListener('keydown', assign, true); input.addEventListener('mousedown', assign, true);
+        const assign = e => { e.preventDefault(); e.stopImmediatePropagation(); if (['Backspace', 'Delete'].includes(e.key)) { maskDraft[id] = ''; input.value = ''; return; } const key = keyName(e); if (key) { maskDraft[id] = key; input.value = key; } };
+        input.placeholder = 'Nhấp để gán phím/chuột'; input.addEventListener('click', () => armInput(input)); input.addEventListener('keydown', e => { if (!armedInput) return; assign(e); disarmInput(); }); input.addEventListener('shortcut-mouse-assigned', e => { maskDraft[id] = e.detail; input.value = e.detail; });
         line.append(text, input); table.appendChild(line);
       }
       const labelTitle = document.createElement('h3'); labelTitle.textContent = 'Đổi label'; labelTitle.style.cssText = 'font-size:16px;margin:22px 0 8px'; table.appendChild(labelTitle);
@@ -502,7 +512,7 @@
         const line = document.createElement('div'); line.className = 'shortcut-row';
         const key = document.createElement('input'); key.type = 'text'; key.readOnly = true; key.value = row.shortcut; key.placeholder = 'Bấm phím'; key.title = 'Nhấp vào đây rồi bấm tổ hợp phím';
         const assign = e => { e.preventDefault(); e.stopImmediatePropagation(); const name = keyName(e); if (name) { row.shortcut = name; key.value = name; } };
-        key.addEventListener('keydown', assign, true); key.addEventListener('mousedown', assign, true);
+        key.placeholder = 'Nhấp để gán phím/chuột'; key.addEventListener('click', () => armInput(key)); key.addEventListener('keydown', e => { if (!armedInput) return; assign(e); disarmInput(); }); key.addEventListener('shortcut-mouse-assigned', e => { row.shortcut = e.detail; key.value = e.detail; });
         const type = document.createElement('select');
         for (const [value, label] of [['number', 'Số CVAT'], ['name', 'Tên label']]) { const opt = document.createElement('option'); opt.value = value; opt.textContent = label; type.appendChild(opt); }
         type.value = row.type; type.addEventListener('change', () => { row.type = type.value; value.placeholder = row.type === 'name' ? 'Tên label chính xác' : 'Số từ 0 đến 9'; });
