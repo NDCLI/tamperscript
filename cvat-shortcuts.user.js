@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CVAT - khóa zoom, Switch label nhanh và Edit mask
 // @namespace    cvat-internal-shortcuts
-// @version      1.9.1
+// @version      1.9.2
 // @description  Khóa zoom, đổi nhãn, Edit mask, chỉnh brush; chặn chọn chữ/menu ngoài ô nhập, giữ Alt để copy
 // @match        http://10.43.2.147:8080/*
 // @match        http://10.43.2.12:8080/*
@@ -190,7 +190,7 @@
   }
 
   function pressEnter(el) {
-    for (const type of ['keydown', 'keypress', 'keyup', 'mousedown']) {
+    for (const type of ['keydown', 'keypress', 'keyup']) {
       el.dispatchEvent(
         new KeyboardEvent(type, {
           key: 'Enter',
@@ -658,7 +658,7 @@
       const control = document.querySelector('.cvat-draw-rectangle-control:not(.cvat-disabled-canvas-control)');
       if (!control) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      if (event.type === 'keydown' && !event.repeat) void activateRectangleDrawing(control);
+      if ((event.type === 'keydown' && !event.repeat) || event.type === 'mousedown') void activateRectangleDrawing(control);
       return;
     }
     const toolbox = [...document.querySelectorAll('.cvat-brush-tools-toolbox')].find(isVisible);
@@ -672,7 +672,7 @@
         button && isVisible(button) && !button.disabled && button.getAttribute('aria-disabled') !== 'true';
       if (!available) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      if (event.type !== 'keydown' || event.repeat) return;
+      if (!((event.type === 'keydown' && !event.repeat) || event.type === 'mousedown')) return;
       if (id === 'form') void toggleBrushForm(selector);
       else button.click();
       return;
@@ -684,11 +684,18 @@
     if (mapping.type === 'name') {
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (event.type === 'keydown' && !event.repeat) void switchActiveObjectToLabel(mapping.value);
+      if ((event.type === 'keydown' && !event.repeat) || event.type === 'mousedown') void switchActiveObjectToLabel(mapping.value);
       return;
     }
     const labelNumber = mapping.value;
 
+    // Chuột không sinh phím Ctrl+số, nên chuyển thành sự kiện bàn phím cho CVAT.
+    if (event.type === 'mousedown') {
+      event.preventDefault(); event.stopImmediatePropagation();
+      const keyCode = 48 + Number(mapping.value);
+      event.target.dispatchEvent(new KeyboardEvent('keydown', { key: mapping.value, code: `Digit${mapping.value}`, keyCode, which: keyCode, ctrlKey: true, bubbles: true, cancelable: true }));
+      return;
+    }
     // Chặn keypress chữ gốc; vẫn cho CVAT nhận Ctrl+số qua propagation.
     if (event.type === 'keydown') event.preventDefault();
 
