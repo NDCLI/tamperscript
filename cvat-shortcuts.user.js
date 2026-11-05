@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CVAT - khóa zoom, Switch label nhanh và Edit mask
 // @namespace    cvat-internal-shortcuts
-// @version      1.9.3
+// @version      1.9.4
 // @description  Khóa zoom, đổi nhãn, Edit mask, chỉnh brush; chặn chọn chữ/menu ngoài ô nhập, giữ Alt để copy
 // @match        http://10.43.2.147:8080/*
 // @match        http://10.43.2.12:8080/*
@@ -651,7 +651,8 @@
     if (event.isComposing) return;
 
     if (document.getElementById('cvat-shortcut-settings')) return;
-    if (event.type === 'pointerdown' && event.button < 3 && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) return;
+    if (event.type === 'pointerdown' && (!(event.target instanceof Element) ||
+      !event.target.closest('#cvat_canvas_wrapper, .cvat-brush-tools-toolbox'))) return;
     const rectKey = maskSettings.rectangle;
     if (rectKey && rectKey === keyName(event)) {
       if (isEditing(event.target)) return;
